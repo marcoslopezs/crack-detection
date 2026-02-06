@@ -105,9 +105,26 @@ confidence_threshold = st.sidebar.slider(
     "Confidence threshold",
     min_value=0.0,
     max_value=1.0,
-    value=0.5,
+    value=0.75,
     step=0.05
 )
+
+# Pixel to mm conversion (optional, only for segmentation)
+st.sidebar.markdown("---")
+st.sidebar.subheader("📏 Scale Conversion in segmentation mode")
+enable_conversion = st.sidebar.checkbox("Enable px → mm conversion", value=False)
+
+px_to_mm = None
+if enable_conversion:
+    px_to_mm = st.sidebar.number_input(
+        "Scale (mm per pixel)",
+        min_value=0.001,
+        max_value=10.0,
+        value=0.1,
+        step=0.01,
+        format="%.3f",
+        help="Enter the scale factor to convert pixels to millimeters"
+    )
 
 
 
@@ -221,10 +238,19 @@ if uploaded_file:
                     col1.metric("Affected area (px)", metrics["area_px"])
                     col2.metric("Estimated extent (px)", metrics["length_px"])
 
+                    # Show mm values if conversion is enabled
+                    if px_to_mm is not None:
+                        area_mm2 = metrics["area_px"] * (px_to_mm ** 2)
+                        length_mm = metrics["length_px"] * px_to_mm
+                        
+                        col3, col4 = st.columns(2)
+                        col3.metric("Affected area (mm²)", f"{area_mm2:.2f}")
+                        col4.metric("Estimated extent (mm)", f"{length_mm:.2f}")
+
                     st.image(
                         result,
                         caption="Segmentation result",
-                        use_column_width=True
+                        use_container_width=True
                     )
                 else:
                     st.info("✅ No significant cracks detected.")
