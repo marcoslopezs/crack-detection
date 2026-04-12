@@ -1,260 +1,173 @@
+from __future__ import annotations
+
+import cv2
+import numpy as np
 import streamlit as st
 import torch
-import numpy as np
 from PIL import Image
-import cv2
-import os
 
-from torchvision import transforms
-
-# Import local functions
-from model_loader import load_faster_rcnn, load_unet_plus_plus
+from inference_utils import SEGMENTATION_IMAGE_SIZE, image_to_tensor, load_project_models, resolve_device
 from model_utils import process_detection_output, process_segmentation_output
 
+st.set_page_config(page_title="Crack Detection", layout="wide")
 
-# =========================================================
-# Page configuration
-# =========================================================
-st.set_page_config(
-    page_title="Crack Detection System",
-    layout="wide",
+DEVICE = resolve_device()
+
+
+@st.cache_resource
+def load_models(device_name: str):
+    return load_project_models(device_name)
+
+
+st.markdown(
+    """
+    <style>
+    .hero {
+        padding: 1.2rem 1.4rem;
+        border: 1px solid rgba(49, 51, 63, 0.12);
+        border-radius: 16px;
+        background: linear-gradient(135deg, rgba(245, 243, 239, 1), rgba(232, 236, 241, 0.85));
+        margin-bottom: 1rem;
+    }
+    .hero h1 {
+        margin: 0;
+        font-size: 2rem;
+    }
+    .hero p {
+        margin: 0.6rem 0 0;
+        max-width: 48rem;
+        line-height: 1.5;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
-st.title("Crack Detection System")
-st.markdown("""
-This system uses two **Convolutional Neural Network** models for automatic surface inspection:
-- **Faster R-CNN** → crack localization  
-- **UNet++** → segmentation and damage quantification
-""")
+st.markdown(
+    """
+    <div class="hero">
+        <h1>Crack Detection Demo</h1>
+        <p>
+            I built this project to turn the models from my bachelor thesis into a small inspection tool.
+            It supports two workflows: object detection for quick localisation and segmentation for a more
+            detailed estimate of damaged area and crack length.
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
+st.caption(
+    f"Running on {DEVICE.type.upper()}. The first prediction can take a few seconds because the weights are loaded on demand."
+)
 
-# =========================================================
-# Device selection
-# =========================================================
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-
-# =========================================================
-# Model loading with cache
-# =========================================================
-@st.cache_resource
-def load_models(device: str):
-    models = {}
-
-    path_rcnn = "weights/fasterrcnn_final_SGD.pth"
-    path_unet = "weights/unetpp_final.pth"
-
-    if not os.path.exists(path_rcnn) or not os.path.exists(path_unet):
-        st.error("⚠️ Weight files not found in the 'weights' folder.")
-        return None
-
-    try:
-        models["faster_rcnn"] = load_faster_rcnn(path_rcnn, device=device)
-        models["unetpp"] = load_unet_plus_plus(path_unet, device=device)
-
-        # Explicit evaluation mode
-        models["faster_rcnn"].eval()
-        models["unetpp"].eval()
-
-        return models
-    except Exception as e:
-        st.error(f"Error loading models: {e}")
-        return None
-
-
-models = load_models(DEVICE)
-
-if models is None:
+try:
+    models = load_models(str(DEVICE))
+except FileNotFoundError as error:
+    st.error(str(error))
     st.stop()
 
-
-# =========================================================
-# Unified preprocessing
-# =========================================================
-image_transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
-    )
-])
-
-
-def preprocess_image(image: Image.Image) -> torch.Tensor:
-    """
-    Converts a PIL image into a normalized tensor
-    compatible with the trained models.
-    """
-    tensor = image_transform(image).unsqueeze(0)
-    return tensor.to(DEVICE)
-
-
-# =========================================================
-# Sidebar interface
-# =========================================================
-st.sidebar.header("⚙️ Settings")
-
-st.sidebar.info(f"🧠 Device: **{DEVICE.upper()}**")
-
+st.sidebar.header("Settings")
 analysis_mode = st.sidebar.radio(
     "Analysis mode",
-    ["Crack Detection", "Segmentation & Measurement"]
+    ["Crack detection", "Segmentation and measurement"],
 )
-
 confidence_threshold = st.sidebar.slider(
     "Confidence threshold",
     min_value=0.0,
     max_value=1.0,
-    value=0.75,
-    step=0.05
+    value=0.5,
+    step=0.05,
 )
 
-# Pixel to mm conversion (optional, only for segmentation)
-st.sidebar.markdown("---")
-st.sidebar.subheader("📏 Scale Conversion in segmentation mode")
-enable_conversion = st.sidebar.checkbox("Enable px → mm conversion", value=False)
+scale_param = None
+if analysis_mode == "Segmentation and measurement":
+    use_scale = st.sidebar.checkbox("Convert pixels to millimetres", value=False)
+    if use_scale:
+        scale_param = st.sidebar.number_input(
+            "Millimetres per pixel",
+            min_value=0.001,
+            max_value=10.0,
+            value=0.1,
+            step=0.01,
+            format="%.3f",
+        )
 
-px_to_mm = None
-if enable_conversion:
-    px_to_mm = st.sidebar.number_input(
-        "Scale (mm per pixel)",
-        min_value=0.001,
-        max_value=10.0,
-        value=0.1,
-        step=0.01,
-        format="%.3f",
-        help="Enter the scale factor to convert pixels to millimeters"
-    )
+uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 
+if uploaded_file is None:
+    st.info("Upload an image to run the demo.")
+    st.stop()
 
+image = Image.open(uploaded_file).convert("RGB")
+left_col, right_col = st.columns(2)
+left_col.image(image, caption="Original image", use_container_width=True)
 
-# =========================================================
-# Main area
-# =========================================================
-uploaded_file = st.file_uploader(
-    "📂 Upload an image to analyze",
-    type=["jpg", "jpeg", "png"]
-)
+if not st.button("Run analysis", type="primary"):
+    st.stop()
 
-if uploaded_file:
-    image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Original image", use_container_width=True)
+with st.spinner("Running inference..."):
+    if analysis_mode == "Crack detection":
+        image_tensor = image_to_tensor(image, device=DEVICE)
+        with torch.no_grad():
+            prediction = models["faster_rcnn"](image_tensor)
 
-    if st.button("🚀 Analyze image"):
-        with st.spinner("Processing image..."):
+        detections = process_detection_output(prediction, threshold=confidence_threshold)
+        result_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
-            img_tensor = preprocess_image(image)
+        for detection in detections:
+            x1, y1, x2, y2 = detection["box"]
+            score = detection["score"]
+            cv2.rectangle(result_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            cv2.putText(
+                result_image,
+                f"{score:.2f}",
+                (x1, max(y1 - 10, 15)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (0, 0, 255),
+                2,
+            )
 
-            # -------------------------------------------------
-            # DETECTION MODE
-            # -------------------------------------------------
-            if analysis_mode == "Crack Detection":
-                model = models["faster_rcnn"]
+        if detections:
+            st.success(f"{len(detections)} crack detection(s) above the selected threshold.")
+        else:
+            st.info("No detections above the selected threshold.")
 
-                with torch.no_grad():
-                    prediction = model(img_tensor)
+        right_col.image(
+            cv2.cvtColor(result_image, cv2.COLOR_BGR2RGB),
+            caption="Detection overlay",
+            use_container_width=True,
+        )
 
-                detections = process_detection_output(
-                    prediction,
-                    threshold=confidence_threshold
-                )
+    else:
+        image_tensor = image_to_tensor(image, device=DEVICE, target_size=SEGMENTATION_IMAGE_SIZE)
+        with torch.no_grad():
+            output = models["unetpp"](image_tensor)
 
-                img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+        metrics, mask_resized = process_segmentation_output(
+            output,
+            image.size,
+            threshold=confidence_threshold,
+            scale_param=scale_param,
+        )
 
-                if len(detections) > 0:
-                    for det in detections:
-                        x1, y1, x2, y2 = det["box"]
-                        score = det["score"]
+        result_image = np.array(image)
+        if metrics["is_positive"]:
+            overlay = result_image.copy()
+            overlay[mask_resized > 0] = [255, 0, 0]
+            result_image = cv2.addWeighted(overlay, 0.35, result_image, 0.65, 0)
+            st.success("Segmentation completed.")
+        else:
+            st.info("No segmented crack area above the selected threshold.")
 
-                        cv2.rectangle(
-                            img_cv,
-                            (x1, y1),
-                            (x2, y2),
-                            (0, 0, 255),
-                            3
-                        )
+        right_col.image(result_image, caption="Segmentation overlay", use_container_width=True)
 
-                        cv2.putText(
-                            img_cv,
-                            f"{score:.2f}",
-                            (x1, max(y1 - 10, 15)),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.6,
-                            (0, 0, 255),
-                            2
-                        )
+        metrics_col_1, metrics_col_2 = st.columns(2)
+        metrics_col_1.metric("Affected area (px)", metrics["area_px"])
+        metrics_col_2.metric("Estimated length (px)", metrics["length_px"])
 
-                    st.success(f"✅ {len(detections)} crack(s) detected.")
-                else:
-                    st.info("✅ No cracks detected with this threshold.")
-
-                st.image(
-                    cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB),
-                    caption="Detection result",
-                    use_container_width=True
-                )
-
-
-            # -------------------------------------------------
-            # SEGMENTATION MODE
-            # -------------------------------------------------
-            else:
-                model = models["unetpp"]
-
-                original_size = image.size  # (W, H)
-
-                # Controlled resizing for UNet++
-                input_resized = torch.nn.functional.interpolate(
-                    img_tensor,
-                    size=(512, 512),
-                    mode="bilinear",
-                    align_corners=False
-                )
-
-                with torch.no_grad():
-                    output = model(input_resized)
-
-                metrics, mask_resized = process_segmentation_output(
-                    output,
-                    original_size,
-                    threshold=confidence_threshold
-                )
-
-                if metrics["is_positive"]:
-                    img_np = np.array(image)
-                    overlay = img_np.copy()
-
-                    overlay[mask_resized > 0] = [255, 0, 0]
-
-                    result = cv2.addWeighted(
-                        overlay, 0.4,
-                        img_np, 0.6,
-                        0
-                    )
-
-                    st.success("✅ Cracks segmented successfully.")
-
-                    col1, col2 = st.columns(2)
-                    col1.metric("Affected area (px)", metrics["area_px"])
-                    col2.metric("Estimated extent (px)", metrics["length_px"])
-
-                    # Show mm values if conversion is enabled
-                    if px_to_mm is not None:
-                        area_mm2 = metrics["area_px"] * (px_to_mm ** 2)
-                        length_mm = metrics["length_px"] * px_to_mm
-                        
-                        col3, col4 = st.columns(2)
-                        col3.metric("Affected area (mm²)", f"{area_mm2:.2f}")
-                        col4.metric("Estimated extent (mm)", f"{length_mm:.2f}")
-
-                    st.image(
-                        result,
-                        caption="Segmentation result",
-                        use_container_width=True
-                    )
-                else:
-                    st.info("✅ No significant cracks detected.")
-
-
-else:
-    st.info("📌 Upload an image to start the analysis.")
+        if scale_param is not None:
+            metrics_col_3, metrics_col_4 = st.columns(2)
+            metrics_col_3.metric("Affected area (mm^2)", f"{metrics['area_mm']:.2f}")
+            metrics_col_4.metric("Estimated length (mm)", f"{metrics['length_mm']:.2f}")

@@ -1,147 +1,86 @@
-# 🔍 Crack Detection System with Deep Learning
+# Crack Detection
 
-[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.30+-FF4B4B.svg)](https://streamlit.io)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+This repository contains the demo application I built around the crack detection models from my bachelor's thesis. The goal was simple: take the trained models, make them usable from a small web interface, and keep the codebase compact enough to explain in a portfolio.
 
-A complete system for **crack detection and segmentation** on surfaces using Convolutional Neural Networks (CNN). This project was developed as part of a Bachelor's Thesis (TFG).
+The project includes two complementary models:
 
-![Demo](https://img.shields.io/badge/Status-Ready_to_Deploy-brightgreen)
+- `Faster R-CNN` for crack localisation with bounding boxes.
+- `UNet++` for crack segmentation and basic measurement.
 
----
+It is not a full inspection platform. It is a focused demo for image-based crack analysis, with the usual caveats around lighting, image quality, camera angle, and domain shift.
 
-## ✨ Features
+## What is in the repo
 
-The system includes two specialized deep learning models:
-
-| Model | Architecture | Purpose |
-|-------|-------------|---------|
-| **Faster R-CNN** | ResNet50 backbone | Crack localization with bounding boxes and confidence scores |
-| **UNet++** | ResNet34 encoder | Pixel-precise segmentation with area and extent metrics |
-
-### Key Capabilities
-- 🎯 **Real-time detection** with adjustable confidence threshold
-- 📊 **Quantitative metrics**: affected area (px) and estimated crack extent
-- 🖼️ **Visual overlays** for easy interpretation of results
-- 🚀 **GPU acceleration** when available (CUDA support)
-
----
-
-## 📁 Project Structure
-
-```
+```text
 crack-detection/
-├── stream2.py          # Main Streamlit app (unified, recommended)
-├── model_loader.py     # Model loading utilities (PyTorch)
-├── model_utils.py      # Post-processing (filtering, skeletonization)
-├── app.py              # REST API with FastAPI
-├── frontend.py         # Legacy Streamlit frontend
-├── weights/            # Trained model weights (.pth)
-│   ├── fasterrcnn_final_SGD.pth
-│   └── unetpp_final.pth
-├── requirements.txt    # Python dependencies
-├── Dockerfile          # Container deployment
-└── DEPLOYMENT_GUIDE.md # Deployment instructions
+├── app.py                 # FastAPI backend
+├── streamlit_app.py       # Main Streamlit interface
+├── inference_utils.py     # Shared preprocessing and model-loading helpers
+├── model_loader.py        # PyTorch model definitions and weight loading
+├── model_utils.py         # Detection filtering and segmentation metrics
+├── tests/                 # Smoke tests for API and utility functions
+├── weights/               # Trained model weights tracked with Git LFS
+├── requirements.txt       # Exact dependency versions used for validation
+├── .gitattributes         # Git LFS configuration for .pth files
+└── .gitignore
 ```
 
----
+## What the app does
 
-## 🚀 Quick Start
+- Crack detection mode returns bounding boxes and confidence scores.
+- Segmentation mode returns a binary mask overlay plus estimated crack area and length in pixels.
+- If you know the image scale, segmentation mode can also convert the measurements to millimetres.
 
-### Prerequisites
-- Python 3.8 or higher
-- (Optional) NVIDIA GPU with CUDA for faster inference
+## Local setup
 
-### Installation
+Tested locally with Python `3.12`.
 
 ```bash
-# Clone the repository
 git clone https://github.com/marcoslopezs/crack-detection.git
 cd crack-detection
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-### Run the Application
+### Run the Streamlit demo
 
-**Option 1: Unified Streamlit App (Recommended)**
 ```bash
-streamlit run stream2.py
+streamlit run streamlit_app.py
 ```
-This opens an interactive web interface where you can upload images and get instant predictions.
 
-**Option 2: API + Frontend (Separate)**
+### Run the API
+
 ```bash
-# Terminal 1: Start the API server
 uvicorn app:app --reload
-
-# Terminal 2: Start the frontend
-streamlit run frontend.py
 ```
-API documentation available at `http://127.0.0.1:8000/docs`
 
----
+Interactive API docs will be available at `http://127.0.0.1:8000/docs`.
 
-## 🎮 Usage
+## Tests
 
-1. **Upload** an image (JPG, JPEG, or PNG)
-2. **Select mode**:
-   - *Crack Detection*: Get bounding boxes around detected cracks
-   - *Segmentation & Measurement*: Get pixel-precise masks with metrics
-3. **Adjust** the confidence threshold as needed
-4. **Analyze** and view results with visual overlays
-
----
-
-## 🐳 Docker Deployment
+The repository includes lightweight smoke tests that validate the utility functions and the FastAPI endpoints without requiring full model inference during the test run.
 
 ```bash
-# Build the image
-docker build -t crack-detection .
-
-# Run the container
-docker run -p 8501:8501 crack-detection
+python -m unittest discover -s tests
 ```
 
-Access the app at `http://localhost:8501`
+## Hugging Face Spaces
 
----
+For a Streamlit Space, the relevant entrypoint is `streamlit_app.py`.
 
-## 📦 Model Weights
+If you want the Space to use a file name other than the default `app.py`, set `app_file: streamlit_app.py` in the YAML header of the Space README. The weight files are stored with Git LFS, so they need to be present in the Space as real files, not just placeholders.
 
-The trained weights are stored using **Git LFS**. They will be downloaded automatically when cloning the repository. If not:
+## Notes on the models
 
-```bash
-git lfs install
-git lfs pull
-```
+- The repository ships the trained weights in `weights/`.
+- `.pth` files are configured through Git LFS in `.gitattributes`.
+- Both the API and the Streamlit UI now use the same preprocessing path, so results are consistent across both entrypoints.
 
----
+## Limitations
 
-## 🛠️ Tech Stack
+- The segmentation measurements are image-based estimates. They only become physically meaningful when you provide a reliable scale factor.
+- Inference on CPU is slower, especially on the first run when the models are loaded.
+- The models were trained for a specific crack detection task, so performance can drop on very different surfaces or acquisition conditions.
 
-- **Deep Learning**: PyTorch, torchvision, segmentation-models-pytorch
-- **Web Interface**: Streamlit
-- **API**: FastAPI, Uvicorn
-- **Image Processing**: OpenCV, Pillow, scikit-image
-- **Containerization**: Docker
+## License
 
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 👤 Author
-
-Developed as a Bachelor's Thesis project.
-
----
-
-<p align="center">
-  <i>Built with ❤️ using PyTorch and Streamlit</i>
-</p>
+MIT. See [LICENSE](LICENSE).
