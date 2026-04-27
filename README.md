@@ -13,16 +13,16 @@ It is not a full inspection platform. It is a focused demo for image-based crack
 
 ```text
 crack-detection/
-├── app.py                 # FastAPI backend
-├── streamlit_app.py       # Main Streamlit interface
-├── inference_utils.py     # Shared preprocessing and model-loading helpers
-├── model_loader.py        # PyTorch model definitions and weight loading
-├── model_utils.py         # Detection filtering and segmentation metrics
-├── tests/                 # Smoke tests for API and utility functions
-├── weights/               # Trained model weights tracked with Git LFS
-├── requirements.txt       # Exact dependency versions used for validation
-├── .gitattributes         # Git LFS configuration for .pth files
-└── .gitignore
+|-- app.py                 # FastAPI backend
+|-- streamlit_app.py       # Main Streamlit interface
+|-- inference_utils.py     # Shared preprocessing and model-loading helpers
+|-- model_loader.py        # PyTorch model definitions and weight loading
+|-- model_utils.py         # Detection filtering and segmentation metrics
+|-- tests/                 # Smoke tests for API and utility functions
+|-- weights/               # Trained model weights tracked with Git LFS
+|-- requirements.txt       # Exact dependency versions used for validation
+|-- .gitattributes         # Git LFS configuration for .pth files
+`-- .gitignore
 ```
 
 ## What the app does
@@ -65,10 +65,8 @@ python -m unittest discover -s tests
 
 ## Hugging Face Spaces
 
-For a Streamlit Space, the relevant entrypoint is `streamlit_app.py`.
-
-If you want the Space to use a file name other than the default `app.py`, set `app_file: streamlit_app.py` in the YAML header of the Space README. The weight files are stored with Git LFS, so they need to be present in the Space as real files, not just placeholders.
-
+The project was deployed in Hugging Face Spaces.
+It can be seen at https://huggingface.co/spaces/marcoslsantos/crack-detection
 ## Notes on the models
 
 - The repository ships the trained weights in `weights/`.
