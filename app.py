@@ -15,6 +15,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
+EXPECTED_MODELS = ("faster_rcnn", "unetpp")
 models = {}
 DEVICE = resolve_device()
 
@@ -36,6 +37,18 @@ def get_model(name: str):
     if model is None:
         raise HTTPException(status_code=503, detail="Models are not loaded.")
     return model
+
+
+@app.get("/health")
+async def healthcheck():
+    loaded_models = [model_name for model_name in EXPECTED_MODELS if model_name in models]
+    status = "ok" if len(loaded_models) == len(EXPECTED_MODELS) else "degraded"
+
+    return {
+        "status": status,
+        "device": str(DEVICE),
+        "models_loaded": loaded_models,
+    }
 
 
 def decode_uploaded_image(image_bytes: bytes):

@@ -109,6 +109,24 @@ st.markdown(
         background: rgba(247, 251, 252, 0.85);
     }
 
+    [data-testid="stHeader"] button,
+    button[kind="headerNoPadding"] {
+        color: #000000 !important;
+        background: transparent !important;
+    }
+
+    [data-testid="stHeader"] button *,
+    button[kind="headerNoPadding"] *,
+    [data-testid="stHeader"] button svg,
+    button[kind="headerNoPadding"] svg,
+    [data-testid="stHeader"] button svg path,
+    button[kind="headerNoPadding"] svg path {
+        color: #000000 !important;
+        fill: #000000 !important;
+        stroke: #000000 !important;
+        opacity: 1 !important;
+    }
+
     [data-testid="stSidebar"] {
         background: #f3f6f7;
         border-right: 1px solid var(--line);

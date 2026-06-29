@@ -43,6 +43,25 @@ class ApiTestCase(unittest.TestCase):
         self.client = TestClient(api_module.app)
         self.image_bytes = build_test_image_bytes()
 
+    def test_health_endpoint_reports_loaded_models(self):
+        response = self.client.get("/health")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["device"], str(api_module.DEVICE))
+        self.assertEqual(payload["models_loaded"], list(api_module.EXPECTED_MODELS))
+
+    def test_health_endpoint_reports_degraded_when_model_is_missing(self):
+        api_module.models.pop("unetpp")
+
+        response = self.client.get("/health")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "degraded")
+        self.assertEqual(payload["models_loaded"], ["faster_rcnn"])
+
     def test_detection_endpoint_returns_detection_metadata(self):
         response = self.client.post(
             "/predict/detection?threshold=0.5",
